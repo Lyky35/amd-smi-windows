@@ -1,0 +1,131 @@
+// The default (no-subcommand) view: an nvidia-smi style dashboard.
+//
+// ADLX does not expose everything nvidia-smi reports. There is no PCI bus
+// address, no P-state, no ECC field and no persistence-mode notion in the
+// interface, so those columns are omitted rather than faked. ADLX does expose
+// the configured board power limit through IGPUManualPowerTuning.
+
+#include <cstdio>
+#include <ctime>
+#include <string>
+#include <vector>
+
+#include "commands.h"
+#include "default_view.h"
+#include "gpu_info.h"
+#include "output.h"
+
+namespace {
+
+// Uses the global (C) time functions because libc++ on Windows does not expose
+// strftime/time_t through std::.
+std::string currentTimestamp() {
+  time_t now = time(nullptr);
+  struct tm local {};
+#if defined(_WIN32)
+  localtime_s(&local, &now);
+#else
+  localtime_r(&now, &local);
+#endif
+  char buf[64];
+  if (strftime(buf, sizeof(buf), "%a %b %e %H:%M:%S %Y", &local) == 0) {
+    return std::string();
+  }
+  return std::string(buf);
+}
+
+void printJson(AdlxSession& session, const std::vector<size_t>& indices,
+               const std::vector<StaticInfo>& infos,
+               const std::vector<Sample>& samples) {
+  JsonBuilder json(OutputFormat::Json);
+  json.beginObject("");
+  json.field("tool", "amd-smi-win");
+  json.field("backend", "ADLX");
+  json.field("adlx_version", session.version());
+  json.field("timestamp", currentTimestamp());
+  json.field("gpu_count", static_cast<long long>(indices.size()));
+
+  json.beginObject("gpus");
+  for (size_t i = 0; i < indices.size(); ++i) {
+    const StaticInfo& st = infos[i];
+    const Sample& sm = samples[i];
+    json.beginObject(std::to_string(indices[i]));
+    json.field("name", st.name);
+    json.field("vendor", st.vendor);
+    json.field("device_id", st.deviceId);
+    json.field("asic_family", st.asicFamily);
+    json.optionalField("vram_total_mib", st.totalVramKnown, (double)st.totalVramMiB);
+    if (st.driverVersionKnown) {
+      json.field("driver_version", st.driverVersion);
+    }
+    if (st.windowsDriverVersionKnown) {
+      json.field("windows_driver_version", st.windowsDriverVersion);
+    }
+    json.optionalField("power_cap_watts", st.powerCapKnown, (double)st.powerCapWatts);
+    json.optionalField("temperature_c", sm.tempOk, sm.temp);
+    json.optionalField("fan_rpm", sm.fanOk, (double)sm.fanRpm);
+    json.optionalField("power_w", sm.powerOk, sm.power);
+    json.optionalField("vram_used_mib", sm.vramOk, (double)sm.vramUsedMiB);
+    json.optionalField("usage_percent", sm.usageOk, sm.usage);
+    json.optionalField("sclk_mhz", sm.sclkOk, (double)sm.sclkMhz);
+    json.optionalField("mclk_mhz", sm.mclkOk, (double)sm.mclkMhz);
+    json.endObject();
+  }
+  json.endObject();
+
+  json.endObject();
+  json.finish();
+}
+
+}  // namespace
+
+int cmdDefault(AdlxSession& session, const Options& opts) {
+  std::vector<size_t> indices;
+  std::string error;
+  if (!resolveGpuSelection(opts, session, indices, error)) {
+    std::fputs((error + "\n").c_str(), stderr);
+    return 1;
+  }
+
+  std::vector<StaticInfo> infos(indices.size());
+  std::vector<Sample> samples(indices.size());
+  std::vector<Capabilities> caps(indices.size());
+
+  for (size_t i = 0; i < indices.size(); ++i) {
+    IADLXGPU* gpu = session.gpus()[indices[i]];
+    readStaticInfo(session, gpu, infos[i]);
+    caps[i] = readCapabilities(session, gpu);
+    readSample(session, gpu, caps[i], samples[i]);
+  }
+
+  if (opts.format == OutputFormat::Json) {
+    printJson(session, indices, infos, samples);
+    return 0;
+  }
+
+  // -1 so the table still fits within a console that is exactly one column
+  // narrower than the table wants (terminals that keep a scrollbar).
+  int width = opts.width > 0 ? opts.width : detectConsoleWidth();
+  DefaultView view(width > 0 ? width - 1 : 0);
+
+  std::printf("%s\n", view.banner(infos, session.version()).c_str());
+  std::printf("%s\n", view.topRule().c_str());
+  std::printf("%s\n", view.staticHeader().c_str());
+  std::printf("%s\n", view.metricHeader().c_str());
+  std::printf("%s\n", view.bottomRule().c_str());
+
+  for (size_t i = 0; i < indices.size(); ++i) {
+    std::printf("%s\n", view.staticRow((int)indices[i], infos[i]).c_str());
+    std::printf("%s\n", view.metricRow((int)indices[i], samples[i], infos[i]).c_str());
+  }
+
+  std::printf("%s\n", view.bottomRule().c_str());
+  std::printf(
+      "Legend: Pwr:Usage/Cap is instantaneous board draw against the configured\n"
+      "power limit. Metrics a given GPU does not support are shown as N/A.\n"
+      "Columns that do not fit the console are dropped; resize the window (or\n"
+      "set COLUMNS) for the full layout. Run 'amd-smi --help' for the complete\n"
+      "command set, and 'static', 'metric' for detail.\n");
+
+  return 0;
+}

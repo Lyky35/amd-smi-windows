@@ -1,0 +1,6 @@
+build/
+llvm-mingw/
+vendor/ADLX/
+*.exe
+*.o
+*.obj
