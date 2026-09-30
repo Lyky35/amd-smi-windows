@@ -111,11 +111,19 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
   int width = opts.width > 0 ? opts.width : detectConsoleWidth();
   DefaultView view(width > 0 ? width - 1 : 0);
 
-  std::printf("%s\n", view.banner(infos, session.version()).c_str());
+  // nvidia-smi's frame, top to bottom: the timestamp on its own line, the
+  // banner inside a solid rule, the two header lines, then a '=' rule that
+  // separates the headers from the data.
+  std::string stamp = view.timestamp();
+  if (!stamp.empty()) {
+    std::printf("%s\n", stamp.c_str());
+  }
   std::printf("%s\n", view.topRule().c_str());
+  std::printf("%s\n", view.banner(infos, session.version()).c_str());
+  std::printf("%s\n", view.headerRule('-').c_str());
   std::printf("%s\n", view.staticHeader().c_str());
   std::printf("%s\n", view.metricHeader().c_str());
-  std::printf("%s\n", view.bottomRule().c_str());
+  std::printf("%s\n", view.headerRule('=').c_str());
 
   for (size_t i = 0; i < indices.size(); ++i) {
     std::printf("%s\n", view.staticRow((int)indices[i], infos[i]).c_str());
@@ -127,9 +135,10 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
       "Legend: Pwr:Usage/Cap is the average GPU board draw over the last second "
       "against the configured power limit. Metrics a given GPU does not support "
       "are shown as N/A.\n"
-      "Columns that do not fit the console are dropped; resize the window (or\n"
-      "set COLUMNS) for the full layout. Run 'amd-smi --help' for the complete\n"
-      "command set, and 'static', 'metric' for detail.\n");
+      "The GPU name shortens first to keep every reading visible; only in a very\n"
+      "narrow console are whole columns dropped, least useful first. Widen the\n"
+      "window (or set COLUMNS) to see more. Run 'amd-smi --help' for the\n"
+      "complete command set, and 'static', 'metric' for detail.\n");
 
   return 0;
 }
