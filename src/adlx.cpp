@@ -27,6 +27,7 @@ bool AdlxSession::init(std::string& error) {
   m_initialized = true;
   m_fullVersion = g_helper.QueryFullVersion();
   m_system = g_helper.GetSystemServices();
+  m_mapping = g_helper.GetAdlMapping();
 
   if (m_system == nullptr) {
     error = "ADLX initialized but returned no system services interface";
@@ -70,6 +71,7 @@ void AdlxSession::shutdown() {
   m_system = nullptr;
   m_perf = nullptr;
   m_tuning = nullptr;
+  m_mapping = nullptr;
   m_gpus.clear();
 }
 

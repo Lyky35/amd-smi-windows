@@ -20,8 +20,7 @@ class DefaultView {
   std::string staticHeader() const;
   std::string metricHeader() const;
   std::string staticRow(int index, const StaticInfo& info) const;
-  std::string metricRow(int index, const Sample& sample,
-                        const StaticInfo& info) const;
+  std::string metricRow(const Sample& sample, const StaticInfo& info) const;
   std::string rule(char fill) const;
   std::string topRule() const;
   std::string bottomRule() const;

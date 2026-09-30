@@ -24,6 +24,9 @@ void printJson(AdlxSession& session, const std::vector<size_t>& indices,
     json.field("vendor", info.vendor);
     json.field("vendor_id", info.vendorId);
     json.field("device_id", info.deviceId);
+    if (info.pciBusIdKnown) {
+      json.field("pci_bus_id", info.pciBusId);
+    }
     json.field("type", info.type);
     json.field("asic_family", info.asicFamily);
     json.field("pnp_string", info.pnpString);
@@ -94,6 +97,8 @@ int cmdStatic(AdlxSession& session, const Options& opts) {
     std::fprintf(stderr, "\nADLX %s\n", session.version().c_str());
     for (size_t i = 0; i < indices.size(); ++i) {
       std::fprintf(stderr, "gpu%zu pnp:  %s\n", indices[i], infos[i].pnpString.c_str());
+      std::fprintf(stderr, "gpu%zu bdf:  %s\n", indices[i],
+                   infos[i].pciBusIdKnown ? infos[i].pciBusId.c_str() : "N/A");
       std::fprintf(stderr, "gpu%zu drv:  %s\n", indices[i], infos[i].driverPath.c_str());
     }
   }

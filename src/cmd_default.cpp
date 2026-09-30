@@ -53,6 +53,9 @@ void printJson(AdlxSession& session, const std::vector<size_t>& indices,
     json.field("name", st.name);
     json.field("vendor", st.vendor);
     json.field("device_id", st.deviceId);
+    if (st.pciBusIdKnown) {
+      json.field("pci_bus_id", st.pciBusId);
+    }
     json.field("asic_family", st.asicFamily);
     json.optionalField("vram_total_mib", st.totalVramKnown, (double)st.totalVramMiB);
     if (st.driverVersionKnown) {
@@ -95,7 +98,7 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
     IADLXGPU* gpu = session.gpus()[indices[i]];
     readStaticInfo(session, gpu, infos[i]);
     caps[i] = readCapabilities(session, gpu);
-    readSample(session, gpu, caps[i], samples[i]);
+    readWindowedSample(session, gpu, caps[i], samples[i]);
   }
 
   if (opts.format == OutputFormat::Json) {
@@ -116,13 +119,14 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
 
   for (size_t i = 0; i < indices.size(); ++i) {
     std::printf("%s\n", view.staticRow((int)indices[i], infos[i]).c_str());
-    std::printf("%s\n", view.metricRow((int)indices[i], samples[i], infos[i]).c_str());
+    std::printf("%s\n", view.metricRow(samples[i], infos[i]).c_str());
   }
 
   std::printf("%s\n", view.bottomRule().c_str());
   std::printf(
-      "Legend: Pwr:Usage/Cap is instantaneous board draw against the configured\n"
-      "power limit. Metrics a given GPU does not support are shown as N/A.\n"
+      "Legend: Pwr:Usage/Cap is the average GPU board draw over the last second "
+      "against the configured power limit. Metrics a given GPU does not support "
+      "are shown as N/A.\n"
       "Columns that do not fit the console are dropped; resize the window (or\n"
       "set COLUMNS) for the full layout. Run 'amd-smi --help' for the complete\n"
       "command set, and 'static', 'metric' for detail.\n");

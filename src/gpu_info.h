@@ -18,3 +18,11 @@ void readStaticInfo(AdlxSession& session, IADLXGPU* gpu, StaticInfo& info);
 Capabilities readCapabilities(AdlxSession& session, IADLXGPU* gpu);
 bool readSample(AdlxSession& session, IADLXGPU* gpu, const Capabilities& caps,
                 Sample& sample);
+
+// Like readSample, but averages utilization and power over a rolling
+// windowMs-long history so the reported figures match what nvidia-smi shows
+// (instantaneous acquisitions can read 0% util and miss the power draw). Falls
+// back to readSample when history tracking is unavailable.
+bool readWindowedSample(AdlxSession& session, IADLXGPU* gpu,
+                        const Capabilities& caps, Sample& sample,
+                        int windowMs = 1000);

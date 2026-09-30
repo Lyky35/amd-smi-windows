@@ -82,16 +82,16 @@ std::string DefaultView::staticRow(int index, const StaticInfo& info) const {
   std::map<std::string, std::string> values;
   values["gpu"] = std::to_string(index);
   values["name"] = info.name;
-  values["device_id"] = info.deviceId;
+  values["device_id"] = info.pciBusIdKnown ? info.pciBusId : info.deviceId;
   return BoxRenderer(m_columns).renderRow(values);
 }
 
-std::string DefaultView::metricRow(int index, const Sample& sample,
+std::string DefaultView::metricRow(const Sample& sample,
                                   const StaticInfo& info) const {
   std::map<std::string, std::string> values;
-  values["gpu"] = std::to_string(index);
-  values["name"] = info.name;
 
+  // GPU index and name live in the static row above; nvidia-smi leaves those
+  // cells blank in the telemetry row, so do the same and drop the duplicates.
   if (sample.sclkOk && sample.mclkOk) {
     values["clocks"] = std::to_string(sample.sclkMhz) + "MHz / " +
                        std::to_string(sample.mclkMhz) + "MHz";

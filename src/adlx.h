@@ -24,6 +24,8 @@ class AdlxSession {
   IADLXSystem* system() const { return m_system; }
   IADLXPerformanceMonitoringServices* perfMonitoring() const { return m_perf; }
   IADLXGPUTuningServices* gputuning() const { return m_tuning; }
+  // ADL<->ADLX bridge; used for the PCI bus:device.function lookup.
+  IADLMapping* mapping() const { return m_mapping; }
 
   // ADLX version string, e.g. "1.5.0.0".
   std::string version() const;
@@ -38,6 +40,7 @@ class AdlxSession {
   IADLXSystem* m_system = nullptr;
   IADLXPerformanceMonitoringServices* m_perf = nullptr;
   IADLXGPUTuningServices* m_tuning = nullptr;
+  IADLMapping* m_mapping = nullptr;
   adlx_uint64 m_fullVersion = 0;
   std::vector<IADLXGPU*> m_gpus;
 };

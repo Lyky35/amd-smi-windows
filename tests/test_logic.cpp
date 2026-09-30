@@ -391,7 +391,7 @@ static void testBoxAlignment() {
   std::string wide = captureStdout([] {
     DefaultView view(200);
     std::printf("%s\n", view.staticRow(0, StaticInfo()).c_str());
-    std::printf("%s\n", view.metricRow(0, Sample(), StaticInfo()).c_str());
+    std::printf("%s\n", view.metricRow(Sample(), StaticInfo()).c_str());
   });
   check(contains(wide, "| 0    |"), "GPU index rendered");
   check(!contains(wide, "Type"), "no Type column rendered");
@@ -420,6 +420,8 @@ static void testDefaultView() {
   StaticInfo info;
   info.name = "Radeon RX 9070";
   info.deviceId = "0x744C";
+  info.pciBusIdKnown = true;
+  info.pciBusId = "01:00.0";
   info.totalVramKnown = true;
   info.totalVramMiB = 16384;
   info.powerCapKnown = true;
@@ -436,20 +438,32 @@ static void testDefaultView() {
 
   // A narrow console must drop columns but keep the memory totals readable.
   DefaultView narrow(78);
-  std::string row = narrow.metricRow(0, sample, info);
+  std::string row = narrow.metricRow(sample, info);
   check(row.size() <= 78, "narrow row fits the window");
   check(contains(row, "1024MiB / 16384MiB"), "total VRAM from TotalVRAM (MiB)");
   check(!contains(row, "RPM"), "fan column dropped at 78 columns");
   check(!contains(row, "MHz"), "clock column dropped at 78 columns");
 
   DefaultView wide(200);
-  std::string full = wide.metricRow(0, sample, info);
+  std::string full = wide.metricRow(sample, info);
   check(contains(full, "15W / 450W"), "usage cap and limit rendered");
   check(contains(full, "1024MiB / 16384MiB"), "memory shown at full width");
+  check(!contains(full, "Radeon RX 9070") && !contains(full, "| 0    |"),
+        "metric row leaves GPU index and name to the static row");
 
   // Missing info degrades to N/A without crashing or emitting garbage.
-  std::string blank = wide.metricRow(0, Sample(), StaticInfo());
+  std::string blank = wide.metricRow(Sample(), StaticInfo());
   check(contains(blank, "N/A"), "blank sample renders as N/A");
+
+  // The static row prefers the PCI bus id (nvidia-smi's Bus-Id identity) and
+  // falls back to the chip device id when the BDF lookup failed.
+  DefaultView medium(160);
+  std::string staticLine = medium.staticRow(0, info);
+  check(contains(staticLine, "01:00.0 "), "PCI bus id shown in the static row");
+  StaticInfo noBdf = info;
+  noBdf.pciBusIdKnown = false;
+  std::string fallback = medium.staticRow(0, noBdf);
+  check(contains(fallback, "0x744C"), "chip device id fallback when no BDF");
 }
 
 int main() {
