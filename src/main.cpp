@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
                  session.version().c_str(), session.gpus().size());
   }
 
-  // No subcommand: nvidia-smi style all-in-one dashboard.
+  // No subcommand: the all-in-one dashboard.
   if (command.empty()) {
     return cmdDefault(session, opts);
   }

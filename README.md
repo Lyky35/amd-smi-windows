@@ -17,32 +17,22 @@ An `amd-smi`-compatible command line tool for **Windows**, built on AMD's offici
 
 ## Features
 
-Run with **no subcommand** for an nvidia-smi style summary of every GPU:
+Run with **no subcommand** for a summary of every GPU:
 
 ```
-Tue Sep 29 22:27:42 2026
-+------------------------------------------------------------------------------------------------------+
-|amd-smi-win 0.1.1  |  ADLX 1.24.0.30000  |  Driver N/A  |  ROCm N/A (Windows)  |  GPUs 2              |
-+-------------------------+------------------------------------------------------------------+---------+
-|GPU         Name         |                                                                  |  PCI-ID |
-|                         | Temp     Fan Pwr:Usage/Cap    Memory-Usage GPU-Util     SCLK/MCLK|         |
-+=========================+==================================================================+=========+
-|0   Radeon RX 9070 XT    |                                                                  | 01:00.0 |
-|                         |  48C 2100RPM    63.4W/304W   2317/16384MiB      37% 2400/14000MHz|         |
-|1   Radeon RX 7900 XTX   |                                                                  | 0b:00.0 |
-|                         |  55C    0RPM   104.8W/355W  12043/24576MiB      88% 2450/14000MHz|         |
-+-------------------------+------------------------------------------------------------------+---------+
+Tue Sep 29 22:51:12 2026  |  amd-smi-win 0.1.2  |  ADLX 1.5.0.0  |  Driver 24.40.0 (Adrenalin 24.40.1)  |  ROCm N/A (Windows)  |  GPUs 1
++----------------------------------------------------------------------------------------------------------------------------------------------+
+| GPU  | Name                   | PCI-ID     |        |           |                    |                      |           |                    |
+|      |                        |            |   Temp |       Fan |      Pwr:Usage/Cap |         Memory-Usage |  GPU-Util |        SCLK / MCLK |
++------+------------------------+------------+--------+-----------+--------------------+----------------------+-----------+--------------------+
+| 0    | Radeon RX 9070         | 01:00.0    |        |           |                    |                      |           |                    |
+|      |                        |            |    41C |   2340RPM |         15W / 304W |   1024MiB / 16384MiB |       12% | 1200MHz / 14000MHz |
++------+------------------------+------------+--------+-----------+--------------------+----------------------+-----------+--------------------+
 ```
 
-The frame follows `nvidia-smi`: a timestamp line, a banner inside a solid rule,
-the header split across an identity row and a telemetry row, then a `=` rule
-separating the headers from the data. Columns are grouped into three blocks —
-identity, telemetry, per-device state — and only the block boundaries are
-ruled, so the table reads as blocks rather than a grid of cells.
-
-The banner carries the runtime **ADLX** and Windows **Driver** versions and a
-**ROCm** field. ROCm is a Linux-only runtime; on Windows it is reported as
-`N/A (Windows)` rather than being left misleadingly blank.
+The banner carries the timestamp, the runtime **ADLX** and Windows **Driver**
+versions, and a **ROCm** field. ROCm is a Linux-only runtime; on Windows it is
+reported as `N/A (Windows)` rather than being left misleadingly blank.
 
 Subcommands give the same data in machine-friendly form:
 
@@ -58,18 +48,11 @@ GPU selection: `--gpu 0`, `--gpu 0,1,3`, `--gpu 0-3`, `--gpu all`.
 ### Responsive layout
 
 The dashboard adapts to your console width instead of wrapping or truncating
-mid-table. It adapts in two stages, so a tight window never costs you a reading
-before it costs you a column:
+mid-table. Columns are dropped in order of expendability until the table fits:
 
-1. **Squeeze.** The device name gives up characters first, marked with `~`
-   exactly as nvidia-smi does. The full layout is 104 characters and squeezes to
-   100, so an ordinary window shows every statistic in full.
-2. **Drop.** Below that, whole columns go in order of expendability:
-   `PCI-ID`, `SCLK/MCLK`, `Fan`, then power. The GPU index, name, temperature,
-   memory and utilization are never dropped.
-
-A numeric column is never squeezed, because truncating one would mangle the
-reading itself (`1200/1400~MHz`) rather than just tightening a label.
+* full width (144 chars): `GPU, Name, PCI-ID, Temp, Fan, Pwr, Memory, Util, SCLK/MCLK`
+* the first six columns fit to ~80; the GPU index, name, temperature, memory
+  and utilization are always kept.
 
 Setting `COLUMNS` also works (MSYS2/Cygwin set it automatically), and
 `--width N` forces an explicit size for capture or scripting. When output is
@@ -77,20 +60,18 @@ redirected to a file or pipe the full, untruncated layout is used.
 
 ### Columns the default view omits
 
-The layout mirrors nvidia-smi, but ADLX does not expose everything
-`nvidia-smi` reports, so those columns are **omitted rather than faked**:
+ADLX does not expose every field a GPU driver might report, so those are
+**omitted rather than faked**:
 
-| nvidia-smi column | Why it is missing here |
+| Field | Why it is missing here |
 | --- | --- |
-| Persistence-M | No such concept for AMD GPUs on Windows |
-| Perf (P-state) | No performance-state query in ADLX |
-| Volatile Uncorr ECC | Not reported for AMD GPUs via ADLX |
-| Disp.A / Compute M. | NVIDIA display/compute-mode concepts |
+| P-state | No performance-state query in ADLX |
+| ECC status | Not reported for AMD GPUs via ADLX |
+| Persistence mode | No such concept for AMD GPUs on Windows |
+| Display/compute mode | AMD GPUs do not expose these as per-GPU settings |
 
-`PCI-ID` takes the place of nvidia-smi's `Bus-Id`, resolved from ADLX's PCI
-mapping as `domain:bus:device.function` and falling back to the chip device id
-when the lookup fails. The metric row carries `SCLK/MCLK`, which ADLX does
-provide.
+In their place the static row carries `Device ID` and `PCI-ID`, and the metric
+row carries `SCLK / MCLK`, all of which ADLX does provide.
 
 ## Requirements
 
@@ -147,7 +128,7 @@ AMD System Management Interface (Windows / ADLX backend) | Version: 0.1.0
 
 usage: amd-smi [-h] [--json] [--csv] [-v] [<command>] [options]
 
-With no command, prints an nvidia-smi style summary of every GPU.
+With no command, prints a summary of every GPU.
 
 commands:
   static        Print static per-GPU device information
@@ -168,7 +149,7 @@ options:
 Examples:
 
 ```bash
-amd-smi                          # nvidia-smi style summary
+amd-smi                          # summary of every GPU
 amd-smi static
 amd-smi metric --gpu 0
 amd-smi metric -i 1000 -n 10     # 10 samples, 1s apart

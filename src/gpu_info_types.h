@@ -20,7 +20,7 @@ struct StaticInfo {
   bool isExternal = false;
 
   // PCI location as "bus:device.function" (e.g. "01:00.0"), the way lspci and
-  // nvidia-smi's Bus-Id identify a GPU. The chip device id is kept separately
+  // PCI location identify a GPU. The chip device id is kept separately
   // above in `deviceId`; the bus id requires an ADLX BDF query and can be
   // absent on bridged/virtual setups.
   bool pciBusIdKnown = false;

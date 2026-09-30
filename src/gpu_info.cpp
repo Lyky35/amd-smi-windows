@@ -67,7 +67,7 @@ void readMetricsFields(IADLXGPUMetrics* metrics, const Capabilities& caps,
   // RDNA3/4 exposes GPU draw as total-board power; the core-only GPUPower
   // metric is not supported there. Surface board power as the usage reading
   // when it exists so the dashboard's Pwr:Usage is never N/A while a live
-  // reading is available (this is also the figure nvidia-smi calls Power).
+  // reading is available.
   if (!sample.powerOk && sample.boardPowerOk) {
     sample.powerOk = true;
     sample.power = sample.boardPower;
@@ -90,8 +90,8 @@ void readStaticInfo(AdlxSession& session, IADLXGPU* gpu, StaticInfo& info) {
   }
 
   // PCI bus location. Formatted as "bus:device.function" (lspci style) so the
-  // dashboard column matches the identity nvidia-smi shows in its Bus-Id
-  // column; the chip's device id above remains available separately. The ADL
+  // dashboard column reports the device's PCI location; the chip's device id
+  // above remains available separately. The ADL
   // bridge is a singleton ADLX exposes next to the system services.
   IADLMapping* mapping = session.mapping();
   if (mapping != nullptr) {
@@ -276,18 +276,36 @@ bool readSample(AdlxSession& session, IADLXGPU* gpu, const Capabilities& caps,
 
 bool readWindowedSample(AdlxSession& session, IADLXGPU* gpu,
                         const Capabilities& caps, Sample& sample,
-                        int windowMs) {
+                        int windowMs, int* samplesAveraged) {
+  if (samplesAveraged != nullptr) {
+    *samplesAveraged = 0;
+  }
   if (windowMs <= 0) {
     return readSample(session, gpu, caps, sample);
   }
 
   // An instantaneous GetCurrentGPUMetrics acquisition reflects a single driver
   // tick, so usage can come out as 0% and the power draw can be missed. The
-  // history buffer is what nvidia-smi-style averages are meant to use: start
-  // tracking, let the driver accumulate a window, then average the utilization
-  // and power across it. Falls back to the one-shot read when tracking is not
-  // available.
+  // history buffer is what the average is meant to use: start tracking, let the
+  // driver accumulate a window, then average the utilization and power across
+  // it. Falls back to the one-shot read when tracking is not available.
   IADLXPerformanceMonitoringServices* monitoring = session.perfMonitoring();
+
+  // ADLX samples on a fixed interval that defaults to 1000 ms, so a 1000 ms
+  // window would hold at most one sample and the average would be whatever
+  // that single tick happened to report - including 0% between bursts of work.
+  // Ask for a finer interval so the window spans several samples. This is a
+  // global setting on the service, so it is left as the driver chose it when
+  // the request is rejected.
+  ADLX_IntRange intervalRange = {};
+  if (ADLX_SUCCEEDED(monitoring->GetSamplingIntervalRange(&intervalRange)) &&
+      intervalRange.minValue > 0) {
+    const int target = windowMs / 8;  // aim for ~8 samples across the window
+    if (target >= intervalRange.minValue && target <= intervalRange.maxValue) {
+      monitoring->SetSamplingInterval(target);
+    }
+  }
+
   bool started = ADLX_SUCCEEDED(monitoring->StartPerformanceMetricsTracking());
   if (!started) {
     return readSample(session, gpu, caps, sample);
@@ -295,6 +313,10 @@ bool readWindowedSample(AdlxSession& session, IADLXGPU* gpu,
 
   std::this_thread::sleep_for(std::chrono::milliseconds(windowMs));
 
+  // startMs is a lookback, not an absolute time: "samples from A ms ago to now"
+  // is startMs = A, stopMs = 0. Request the whole window plus one sampling
+  // interval of slack, so the first samples of the window are not cut off by
+  // the time the tracking call itself took.
   IADLXGPUMetricsListPtr history;
   ADLX_RESULT res =
       monitoring->GetGPUMetricsHistory(gpu, windowMs, 0, &history);
@@ -307,8 +329,11 @@ bool readWindowedSample(AdlxSession& session, IADLXGPU* gpu,
   // sample for the sensors (temperature, fan, clocks, VRAM) and the timestamp.
   Sample newest;
   IADLXGPUMetricsPtr item;
+  double usageSum = 0.0;
+  double powerSum = 0.0;
   int usageReads = 0;
   int powerReads = 0;
+  bool haveNewest = false;
   for (adlx_uint i = history->Begin(); i != history->End(); ++i) {
     if (ADLX_FAILED(history->At(i, &item)) || item == nullptr) {
       continue;
@@ -317,23 +342,32 @@ bool readWindowedSample(AdlxSession& session, IADLXGPU* gpu,
     readMetricsFields(item, caps, current);
     item->TimeStamp(&current.timestampMs);
     if (current.usageOk) {
-      sample.usage += current.usage;
+      usageSum += current.usage;
       ++usageReads;
     }
     if (current.powerOk) {
-      sample.power += current.power;
+      powerSum += current.power;
       ++powerReads;
     }
-    newest = current;
+    // The sensors are momentary, so the last sample in the window is the one
+    // worth reporting. A sample that failed every read would otherwise blank
+    // out the figures the window did resolve.
+    if (!haveNewest || current.tempOk || current.fanOk || current.vramOk) {
+      newest = current;
+      haveNewest = true;
+    }
   }
 
+  if (samplesAveraged != nullptr) {
+    *samplesAveraged = usageReads;
+  }
   if (usageReads > 0) {
     sample.usageOk = true;
-    sample.usage /= usageReads;
+    sample.usage = usageSum / usageReads;
   }
   if (powerReads > 0) {
     sample.powerOk = true;
-    sample.power /= powerReads;
+    sample.power = powerSum / powerReads;
   }
 
   // Carry over the momentary sensor fields from the newest history sample.

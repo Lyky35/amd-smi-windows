@@ -1,9 +1,8 @@
-// The default (no-subcommand) view: an nvidia-smi style dashboard.
+// The default (no-subcommand) view: the all-in-one dashboard.
 //
-// ADLX does not expose everything nvidia-smi reports. There is no PCI bus
-// address, no P-state, no ECC field and no persistence-mode notion in the
-// interface, so those columns are omitted rather than faked. ADLX does expose
-// the configured board power limit through IGPUManualPowerTuning.
+// ADLX does not expose a PCI bus address, a P-state, an ECC field or a
+// persistence-mode notion, so those are omitted rather than faked. ADLX does
+// expose the configured board power limit through IGPUManualPowerTuning.
 
 #include <cstdio>
 #include <ctime>
@@ -98,7 +97,17 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
     IADLXGPU* gpu = session.gpus()[indices[i]];
     readStaticInfo(session, gpu, infos[i]);
     caps[i] = readCapabilities(session, gpu);
-    readWindowedSample(session, gpu, caps[i], samples[i]);
+    int averaged = 0;
+    readWindowedSample(session, gpu, caps[i], samples[i], 1000, &averaged);
+    // A dashboard utilization of 0% means one of two very different things: the
+    // GPU really is idle, or the driver returned no history to average over and
+    // a single instantaneous tick was reported. The sample count tells them
+    // apart, which is the difference between a real reading and a missed one.
+    if (opts.verbose) {
+      std::fprintf(stderr,
+                   "gpu %zu: utilization averaged over %d history sample(s)\n",
+                   indices[i], averaged);
+    }
   }
 
   if (opts.format == OutputFormat::Json) {
@@ -111,19 +120,11 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
   int width = opts.width > 0 ? opts.width : detectConsoleWidth();
   DefaultView view(width > 0 ? width - 1 : 0);
 
-  // nvidia-smi's frame, top to bottom: the timestamp on its own line, the
-  // banner inside a solid rule, the two header lines, then a '=' rule that
-  // separates the headers from the data.
-  std::string stamp = view.timestamp();
-  if (!stamp.empty()) {
-    std::printf("%s\n", stamp.c_str());
-  }
-  std::printf("%s\n", view.topRule().c_str());
   std::printf("%s\n", view.banner(infos, session.version()).c_str());
-  std::printf("%s\n", view.headerRule('-').c_str());
+  std::printf("%s\n", view.topRule().c_str());
   std::printf("%s\n", view.staticHeader().c_str());
   std::printf("%s\n", view.metricHeader().c_str());
-  std::printf("%s\n", view.headerRule('=').c_str());
+  std::printf("%s\n", view.bottomRule().c_str());
 
   for (size_t i = 0; i < indices.size(); ++i) {
     std::printf("%s\n", view.staticRow((int)indices[i], infos[i]).c_str());
@@ -135,10 +136,9 @@ int cmdDefault(AdlxSession& session, const Options& opts) {
       "Legend: Pwr:Usage/Cap is the average GPU board draw over the last second "
       "against the configured power limit. Metrics a given GPU does not support "
       "are shown as N/A.\n"
-      "The GPU name shortens first to keep every reading visible; only in a very\n"
-      "narrow console are whole columns dropped, least useful first. Widen the\n"
-      "window (or set COLUMNS) to see more. Run 'amd-smi --help' for the\n"
-      "complete command set, and 'static', 'metric' for detail.\n");
+      "Columns that do not fit the console are dropped; resize the window (or\n"
+      "set COLUMNS) for the full layout. Run 'amd-smi --help' for the complete\n"
+      "command set, and 'static', 'metric' for detail.\n");
 
   return 0;
 }
